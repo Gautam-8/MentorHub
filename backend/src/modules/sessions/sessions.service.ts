@@ -125,13 +125,13 @@ export class SessionsService {
     if (user.role === UserRole.MENTOR) {
       return this.sessionRepository.find({
         where: { mentor: { id: user.id } },
-        relations: ['mentee', 'sessionRequest'],
+        relations: ['mentor', 'mentee', 'sessionRequest'],
         order: { scheduledAt: 'DESC' },
       });
     } else {
       return this.sessionRepository.find({
         where: { mentee: { id: user.id } },
-        relations: ['mentor', 'sessionRequest'],
+        relations: ['mentor', 'mentee', 'sessionRequest'],
         order: { scheduledAt: 'DESC' },
       });
     }

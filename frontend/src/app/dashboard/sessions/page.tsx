@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -43,6 +44,8 @@ export default function SessionsPage() {
   const [sessionRequests, setSessionRequests] = useState<SessionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAvailability, setSelectedAvailability] = useState<Availability | null>(null);
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     fetchAvailabilities();
@@ -62,15 +65,6 @@ export default function SessionsPage() {
       }
       
       const data = await response.json();
-      console.log('Raw API Response:', data);
-      
-      if (!Array.isArray(data)) {
-        console.log('Converting to array if needed...');
-        const dataArray = Array.isArray(data) ? data : [data];
-        setAvailabilities(dataArray);
-        return;
-      }
-
       setAvailabilities(data);
     } catch (error) {
       console.error('Error fetching availabilities:', error);
@@ -92,15 +86,6 @@ export default function SessionsPage() {
       }
       
       const data = await response.json();
-      console.log('Session Requests:', data);
-      
-      if (!Array.isArray(data)) {
-        console.log('Converting to array if needed...');
-        const dataArray = Array.isArray(data) ? data : [data];
-        setSessionRequests(dataArray);
-        return;
-      }
-
       setSessionRequests(data);
     } catch (error) {
       console.error('Error fetching session requests:', error);
@@ -119,7 +104,10 @@ export default function SessionsPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({ availabilityId }),
+        body: JSON.stringify({ 
+          availabilityId,
+          note: note.trim() || undefined 
+        }),
       });
 
       if (!response.ok) {
@@ -127,6 +115,8 @@ export default function SessionsPage() {
       }
 
       toast.success('Session request sent successfully');
+      setNote('');
+      setSelectedAvailability(null);
       fetchSessionRequests();
     } catch (error) {
       console.error('Error requesting session:', error);
@@ -168,16 +158,45 @@ export default function SessionsPage() {
                     <p className="mb-2">
                       {availability.dayOfWeek} at {availability.startTime} - {availability.endTime}
                     </p>
-                    <Button
-                      onClick={() => requestSession(availability.id)}
-                      disabled={sessionRequests.some(
-                        (request) =>
-                          request.availability.id === availability.id &&
-                          request.status === 'PENDING',
-                      )}
-                    >
-                      Request Session
-                    </Button>
+                    {selectedAvailability?.id === availability.id ? (
+                      <div className="space-y-4">
+                        <Textarea
+                          placeholder="Add a note (optional)"
+                          value={note}
+                          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNote(e.target.value)}
+                          className="w-full"
+                        />
+                        <div className="flex space-x-2">
+                          <Button
+                            onClick={() => requestSession(availability.id)}
+                            className="flex-1"
+                          >
+                            Confirm Request
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedAvailability(null);
+                              setNote('');
+                            }}
+                            className="flex-1"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => setSelectedAvailability(availability)}
+                        disabled={sessionRequests.some(
+                          (request) =>
+                            request.availability.id === availability.id &&
+                            request.status === 'PENDING',
+                        )}
+                      >
+                        Request Session
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -203,7 +222,7 @@ export default function SessionsPage() {
                       {request.availability.dayOfWeek} at {request.availability.startTime} - {request.availability.endTime}
                     </p>
                     <p className="mb-2">Status: {request.status}</p>
-                    {request.note && <p className="text-sm text-gray-500">{request.note}</p>}
+                    {request.note && <p className="text-sm text-gray-500 mb-2">{request.note}</p>}
                     <p className="text-sm text-gray-500">
                       Requested on {format(new Date(request.createdAt), 'PPP')}
                     </p>
