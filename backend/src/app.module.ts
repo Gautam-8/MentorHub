@@ -7,6 +7,8 @@ import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { SessionsModule } from './modules/sessions/sessions.module';
     AuthModule,
     AvailabilityModule,
     SessionsModule,
+    FeedbackModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
