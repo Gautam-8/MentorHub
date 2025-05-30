@@ -1,10 +1,10 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { AvailabilityService } from './availability.service';
-import { CreateAvailabilityDto } from './dto/availability.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/entities/user.entity';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { CreateAvailabilityDto, UpdateAvailabilityDto } from './dto/availability.dto';
 
 @Controller('availability')
 @UseGuards(JwtAuthGuard)
@@ -18,9 +18,14 @@ export class AvailabilityController {
     return this.availabilityService.create(createAvailabilityDto, req.user);
   }
 
+  @Get()
+  findAll() {
+    return this.availabilityService.findAll();
+  }
+
   @Get('mentor/:mentorId')
-  findAllByMentor(@Param('mentorId') mentorId: string) {
-    return this.availabilityService.findAllByMentor(mentorId);
+  findByMentor(@Param('mentorId') mentorId: string) {
+    return this.availabilityService.findByMentor(mentorId);
   }
 
   @Get(':id')
@@ -33,7 +38,7 @@ export class AvailabilityController {
   @Roles(UserRole.MENTOR)
   update(
     @Param('id') id: string,
-    @Body() updateAvailabilityDto: CreateAvailabilityDto,
+    @Body() updateAvailabilityDto: UpdateAvailabilityDto,
     @Request() req,
   ) {
     return this.availabilityService.update(id, updateAvailabilityDto, req.user);

@@ -26,10 +26,24 @@ export class AvailabilityService {
     return this.availabilityRepository.save(availability);
   }
 
-  async findAllByMentor(mentorId: string) {
+  async findAll() {
+    return this.availabilityRepository.find({
+      relations: ['mentor'],
+      order: {
+        dayOfWeek: 'ASC',
+        startTime: 'ASC',
+      },
+    });
+  }
+
+  async findByMentor(mentorId: string) {
     return this.availabilityRepository.find({
       where: { mentor: { id: mentorId } },
       relations: ['mentor'],
+      order: {
+        dayOfWeek: 'ASC',
+        startTime: 'ASC',
+      },
     });
   }
 
