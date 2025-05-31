@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, Calendar, BarChart2, Search, LogOut, User } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +12,18 @@ import { cn } from '@/lib/utils';
 export function Navbar() {
   const { user, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('pinging server');
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/ping`)
+        .then(res => res)
+        .then(console.log)
+        .catch(console.error);
+    }, 20000); // every 20s
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Helper for avatar initials
   const getInitials = (name: string) => {
