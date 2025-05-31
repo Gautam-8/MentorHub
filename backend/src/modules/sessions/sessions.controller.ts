@@ -18,6 +18,11 @@ export class SessionsController {
     return this.sessionsService.createRequest(createSessionRequestDto, req.user);
   }
 
+  @Get('requests/all')
+  async findAllRequestsAll() {
+    return this.sessionsService.findAllRequestsAll();
+  }
+
   @Get('requests')
   findAllRequests(@Request() req) {
     return this.sessionsService.findAllRequests(req.user);

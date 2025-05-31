@@ -248,35 +248,30 @@ export class SessionsService {
       if (!mentorStats.has(mentorId)) {
         mentorStats.set(mentorId, {
           sessions: 0,
+          name: session.mentor.name
         });
       }
       const stats = mentorStats.get(mentorId);
       stats.sessions++;
     });
 
-    // Get all feedback for these mentors
-    const mentorIds = Array.from(mentorStats.keys());
-    const allMentorFeedback = await this.feedbackRepository.find({
-      where: { toUser: { id: In(mentorIds) } },
-      relations: ['session', 'fromUser', 'toUser'],
+    // Get all feedback where mentee is the toUser
+    const feedback = await this.feedbackRepository.find({
+      where: { 
+        toUser: { id: user.id }
+      },
+      relations: ['fromUser'],
     });
 
-    // Get mentor details
-    const mentors = await this.userRepository.find({
-      where: { id: In(mentorIds) },
-      select: ['id', 'name'],
-    });
-
-    console.log(allMentorFeedback);
-    // Map mentors with their stats and ratings
-    const mentorsWithStats = mentors.map(mentor => {
-      const mentorFeedback = allMentorFeedback.filter(f => f.toUser.id === mentor.id);
+    // Group feedback by mentor and calculate averages
+    const mentorsWithStats = Array.from(mentorStats.entries()).map(([mentorId, stats]) => {
+      const mentorFeedback = feedback.filter(f => f.fromUser.id === mentorId);
       const ratings = mentorFeedback.map(f => f.rating);
       
       return {
-        id: mentor.id,
-        name: mentor.name,
-        sessions: mentorStats.get(mentor.id).sessions,
+        id: mentorId,
+        name: stats.name,
+        sessions: stats.sessions,
         averageRating: ratings.length > 0
           ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1))
           : null,
@@ -314,5 +309,12 @@ export class SessionsService {
     await this.sessionRequestRepository.save(request);
 
     return savedSession;
+  }
+
+  async findAllRequestsAll() {
+    return this.sessionRequestRepository.find({
+      relations: ['mentee', 'mentor', 'availability'],
+      order: { createdAt: 'DESC' },
+    });
   }
 } 

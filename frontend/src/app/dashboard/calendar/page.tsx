@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { WeeklyCalendar } from '@/components/dashboard/WeeklyCalendar';
-import { FeedbackModal } from '@/components/dashboard/FeedbackModal';
 import {
   Dialog,
   DialogContent,
@@ -50,7 +49,7 @@ interface Session {
     id: string;
     name: string;
   };
-  availability?: {
+  availability: {
     id: string;
     date: string;
     startTime: string;
@@ -285,7 +284,7 @@ export default function CalendarPage() {
 
   const fetchSessionRequests = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/sessions/requests`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/sessions/requests/all`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
@@ -447,20 +446,10 @@ export default function CalendarPage() {
     window.open(meetLink, '_blank');
   };
 
-  // Helper: open feedback modal for a session
-  const openFeedbackModal = (session: Session) => {
-    if (!user) return;
-    // Determine recipient: if user is mentor, recipient is mentee, else mentor
-    const recipient = user.role === 'MENTOR' ? session.mentee : session.mentor;
-    setFeedbackSession(session);
-    setFeedbackRecipient(recipient.name);
-    setFeedbackRecipientId(recipient.id);
-    setViewFeedback({ rating: 0, comment: '' }); // Reset feedback state
-  };
 
   // Helper: submit feedback
-  const submitFeedback = async (rating: number, comment: string = '') => {
-    if (!feedbackSession || !user) return;
+  const submitFeedback = async (rating: number, comment: string = '', toUserId: string) => {
+    if (!selectedSession || !user) return;
     
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/feedback`, {
@@ -470,8 +459,8 @@ export default function CalendarPage() {
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify({
-          sessionId: feedbackSession.id,
-          toUserId: feedbackRecipientId,
+          sessionId: selectedSession.id,
+          toUserId: toUserId,
           rating,
           comment,
         }),
@@ -483,7 +472,7 @@ export default function CalendarPage() {
       }
 
       // Update local feedback state
-      const feedbackKey = `${feedbackSession.id}_${feedbackRecipientId}`;
+      const feedbackKey = `${selectedSession.id}_${feedbackRecipientId}`;
       setFeedbacks(prev => ({
         ...prev,
         [feedbackKey]: { rating, comment }
@@ -492,7 +481,7 @@ export default function CalendarPage() {
       toast.success('Feedback submitted successfully!');
       
       // Reset all feedback-related state
-      setFeedbackSession(null);
+      setSelectedSession(null);
       setFeedbackRecipient('');
       setFeedbackRecipientId('');
       setViewFeedback({ rating: 0, comment: '' });
@@ -546,35 +535,41 @@ export default function CalendarPage() {
   };
 
   const getSlotStatus = (slot: TimeSlot) => {
+    // Check if there's any pending request for this slot
     const pendingRequest = sessionRequests.find(
       request => 
-        request.availability.id === slot.id && 
+        request?.availability?.id === slot?.id && 
         request.status === 'PENDING'
     );
     
     if (pendingRequest) {
       return {
         type: 'pending',
-        request: pendingRequest
+        request: pendingRequest,
+        isAvailable: user?.role === 'MENTEE' ? pendingRequest.mentee.id === user.id : true
       };
     }
 
+    // Check if there's any approved request for this slot
     const approvedRequest = sessionRequests.find(
       request => 
-        request.availability.id === slot.id && 
-        request.status === 'APPROVED'
+        request?.availability?.id === slot?.id && 
+        request?.status === 'APPROVED'
     );
 
     if (approvedRequest) {
       return {
         type: 'approved',
-        request: approvedRequest
+        request: approvedRequest,
+        isAvailable: user?.role === 'MENTEE' ? approvedRequest.mentee.id === user.id : true
       };
     }
 
+
     return {
       type: 'available',
-      request: null
+      request: null,
+      isAvailable: true
     };
   };
 
@@ -603,72 +598,9 @@ export default function CalendarPage() {
     }
   };
 
-  const getSessionDetails = (session: Session) => {
-    const feedback = feedbacks[`${session.id}_${user?.role === 'MENTOR' ? session.mentee.id : session.mentor.id}`];
-    const isPastSession = new Date(session.scheduledAt) < new Date();
-    const canGiveFeedback = isPastSession && !feedback;
 
-    return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center text-xs">
-              {getInitials(session.mentor.name)}
-            </div>
-            <span className="text-xs font-medium">{session.mentor.name}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center text-xs">
-              {getInitials(session.mentee.name)}
-            </div>
-            <span className="text-xs font-medium">{session.mentee.name}</span>
-          </div>
-        </div>
-        <div className="text-xs text-neutral-500 dark:text-neutral-400">
-          {session.startTime} - {session.endTime}
-        </div>
-        {session.meetLink && (
-          <Button
-            size="sm"
-            variant="secondary"
-            className="w-full text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleJoinSession(session.meetLink);
-            }}
-          >
-            Join Session
-          </Button>
-        )}
-        {canGiveFeedback && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              openFeedbackModal(session);
-            }}
-          >
-            Give Feedback
-          </Button>
-        )}
-        {feedback && (
-          <div className="flex items-center gap-1 text-xs">
-            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-            <span>{feedback.rating}/5</span>
-            {feedback.comment && (
-              <span className="text-neutral-500 dark:text-neutral-400 ml-1">
-                - {feedback.comment}
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
 
-  const fetchSessionDetails = async (requestId: string) => {
+  const fetchSessionDetails = async (requestId: string, slot: TimeSlot) => {
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/sessions/request/${requestId}`,
@@ -682,12 +614,15 @@ export default function CalendarPage() {
       if (!response.ok) throw new Error('Failed to fetch session details');
       
       const session = await response.json();
+      // Find the matching time slot and add its times to the session
+      if (slot) {
+        session.startTime = slot.startTime;
+        session.endTime = slot.endTime;
+      }
       setSelectedSession(session);
 
       // Fetch feedback for the session
       if (user) {
-        // If user is mentor, they are the fromUserId and mentee is toUserId
-        // If user is mentee, they are the fromUserId and mentor is toUserId
         const fromUserId = user.id;
         const toUserId = user.role === 'MENTOR' ? session.mentee.id : session.mentor.id;
         fetchFeedback(session.id, fromUserId, toUserId);
@@ -890,13 +825,6 @@ export default function CalendarPage() {
                   return (
                     <div
                       key={time}
-                      className={cn(
-                        "h-12 p-1 border-b border-neutral-200/50 dark:border-neutral-800/50 transition-all duration-200",
-                        slots.length > 0 && "bg-green-50/50 dark:bg-green-900/10",
-                        sessions.length > 0 && "bg-blue-50/50 dark:bg-blue-900/10",
-                        (user?.role === 'MENTOR' || (user?.role === 'MENTEE' && slots.length > 0)) && 
-                        "cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/50"
-                      )}
                       onClick={(e) => {
                         // If clicking on a session, don't do anything
                         if (e.target instanceof HTMLElement && e.target.closest('[data-session]')) {
@@ -913,12 +841,16 @@ export default function CalendarPage() {
                             const slot = slots[0];
                             const status = getSlotStatus(slot);
                             
+                            if (!status.isAvailable) {
+                              return; // Don't do anything if slot is not available
+                            }
+                            
                             if (status.type === 'pending') {
                               setSelectedRequest(status.request);
                             } else if (status.type === 'available') {
                               setSelectedSlot(slot);
                             } else if (status.type === 'approved' && status.request) {
-                              fetchSessionDetails(status.request.id);
+                              fetchSessionDetails(status.request.id, slot);
                             }
                           } else {
                             setNewAvailability({
@@ -936,13 +868,25 @@ export default function CalendarPage() {
                           const slot = slots[0];
                           const status = getSlotStatus(slot);
                           
+                          if (!status.isAvailable) {
+                            return; // Don't do anything if slot is not available
+                          }
+                          
                           if (status.type === 'available') {
                             setSelectedSlot(slot);
                           } else if (status.type === 'approved' && status.request) {
-                            fetchSessionDetails(status.request.id);
+                            fetchSessionDetails(status.request.id, slot);
                           }
                         }
                       }}
+                      className={cn(
+                        "h-12 p-1 border-b border-neutral-200/50 dark:border-neutral-800/50 transition-all duration-200",
+                        slots.length > 0 && "bg-green-50/50 dark:bg-green-900/10",
+                        sessions.length > 0 && "bg-blue-50/50 dark:bg-blue-900/10",
+                        (user?.role === 'MENTOR' || (user?.role === 'MENTEE' && slots.length > 0)) && 
+                        getSlotStatus(slots[0])?.isAvailable && 
+                        "cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/50"
+                      )}
                     >
                       {slots.map((slot) => {
                         const status = getSlotStatus(slot);
@@ -952,9 +896,13 @@ export default function CalendarPage() {
                             className={cn(
                               "text-white text-xs p-1 rounded mb-1 transition-all duration-200 shadow-sm",
                               status.type === 'available' && "bg-green-500 hover:bg-green-600",
-                              status.type === 'pending' && "bg-yellow-500 hover:bg-yellow-600",
-                              status.type === 'approved' && "bg-blue-500 hover:bg-blue-600"
+                              status.type === 'pending' && status.isAvailable && "bg-yellow-500 hover:bg-yellow-600",
+                              status.type === 'pending' && !status.isAvailable && "bg-gray-400 cursor-not-allowed",
+                              status.type === 'approved' && !status.isAvailable && "bg-gray-400 cursor-not-allowed",
+                              status.type === 'approved' && status.isAvailable && "bg-blue-500 hover:bg-blue-600"
+
                             )}
+                            title={!status.isAvailable ? "This slot is already booked/pending by another mentee" : undefined}
                           >
                             {status.type === 'available' && (
                               <>Available ({slot.startTime} - {slot.endTime})</>
@@ -1206,63 +1154,6 @@ export default function CalendarPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Feedback Modal */}
-      <Dialog 
-        open={!!feedbackSession} 
-        onOpenChange={(open) => {
-          if (!open) {
-            setFeedbackSession(null);
-            setFeedbackRecipient('');
-            setFeedbackRecipientId('');
-            setViewFeedback({ rating: 0, comment: '' });
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Give Feedback</DialogTitle>
-          </DialogHeader>
-          {feedbackSession && (
-            <div className="space-y-4">
-              <div className="text-sm">
-                How was your session with {feedbackRecipient}?
-              </div>
-              <div className="flex items-center gap-2">
-                {[1, 2, 3, 4, 5].map((rating) => (
-                  <Button
-                    key={rating}
-                    variant="outline"
-                    size="icon"
-                    className="w-10 h-10"
-                    onClick={() => setViewFeedback(prev => ({ ...prev, rating }))}
-                  >
-                    <Star className={cn(
-                      "w-5 h-5",
-                      rating <= viewFeedback.rating && "fill-yellow-400 text-yellow-400"
-                    )} />
-                  </Button>
-                ))}
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Comments (Optional)</label>
-                <Input
-                  placeholder="Share your experience..."
-                  value={viewFeedback.comment}
-                  onChange={(e) => setViewFeedback(prev => ({ ...prev, comment: e.target.value }))}
-                />
-              </div>
-              <Button
-                onClick={() => submitFeedback(viewFeedback.rating, viewFeedback.comment)}
-                className="w-full"
-                disabled={viewFeedback.rating === 0}
-              >
-                Submit Feedback
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {/* Session Details Dialog */}
       <Dialog 
         open={!!selectedSession} 
@@ -1376,13 +1267,7 @@ export default function CalendarPage() {
                         />
                       </div>
                       <Button
-                        onClick={() => {
-                          // Set the feedback session before submitting
-                          setFeedbackSession(selectedSession);
-                          setFeedbackRecipient(user.role === 'MENTOR' ? selectedSession.mentee.name : selectedSession.mentor.name);
-                          setFeedbackRecipientId(toUserId);
-                          submitFeedback(viewFeedback.rating, viewFeedback.comment);
-                        }}
+                        onClick={() => submitFeedback(viewFeedback.rating, viewFeedback.comment, toUserId)}
                         className="w-full"
                         disabled={viewFeedback.rating === 0}
                       >
