@@ -7,6 +7,8 @@ import { CreateSessionRequestDto, UpdateSessionRequestDto } from './dto/session-
 import { User } from '../users/entities/user.entity';
 import { UserRole } from '../users/entities/user.entity';
 import { Availability } from '../availability/entities/availability.entity';
+import { Feedback } from '../feedback/entities/feedback.entity';
+import { In } from 'typeorm';
 
 @Injectable()
 export class SessionsService {
@@ -17,6 +19,8 @@ export class SessionsService {
     private sessionRepository: Repository<Session>,
     @InjectRepository(Availability)
     private availabilityRepository: Repository<Availability>,
+    @InjectRepository(Feedback)
+    private feedbackRepository: Repository<Feedback>,
   ) {}
 
   async createRequest(createSessionRequestDto: CreateSessionRequestDto, mentee: User) {
@@ -154,9 +158,113 @@ export class SessionsService {
     return session;
   }
 
+  async findSessionByRequest(requestId: string, user: User) {
+    const session = await this.sessionRepository.findOne({
+      where: { sessionRequest: { id: requestId } },
+      relations: ['mentor', 'mentee', 'sessionRequest'],
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session not found for this request');
+    }
+
+    if (session.mentor.id !== user.id && session.mentee.id !== user.id) {
+      throw new ForbiddenException('You can only view your own sessions');
+    }
+
+    return session;
+  }
+
   private generateMeetLink(): string {
     // Generate a random string for the meet link
     const randomString = Math.random().toString(36).substring(2, 12);
     return `https://meet.google.com/${randomString}`;
+  }
+
+  async getMentorAnalytics(user: User) {
+    // Get all sessions for this mentor
+    const sessions = await this.sessionRepository.find({
+      where: { mentor: { id: user.id } },
+      relations: ['mentee'],
+      order: { scheduledAt: 'DESC' },
+    });
+
+    // Get feedback for these sessions
+    const feedback = await this.feedbackRepository.find({
+      where: { session: { id: In(sessions.map(s => s.id)) } },
+    });
+
+    // Calculate average rating
+    const ratings = feedback.map(f => f.rating);
+    const averageRating = ratings.length > 0
+      ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+      : 0;
+
+    // Get sessions per week for the last 8 weeks
+    const sessionsPerWeek = Array(8).fill(0);
+    const now = new Date();
+    sessions.forEach(session => {
+      const sessionDate = new Date(session.scheduledAt);
+      const weeksAgo = Math.floor((now.getTime() - sessionDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+      if (weeksAgo < 8) {
+        sessionsPerWeek[weeksAgo]++;
+      }
+    });
+
+    return {
+      totalSessions: sessions.length,
+      averageRating: Number(averageRating.toFixed(1)),
+      sessionsPerWeek: sessionsPerWeek.reverse(), // Most recent week first
+      totalMentees: new Set(sessions.map(s => s.mentee.id)).size,
+    };
+  }
+
+  async getMenteeAnalytics(user: User) {
+    // Get all sessions for this mentee
+    const sessions = await this.sessionRepository.find({
+      where: { mentee: { id: user.id } },
+      relations: ['mentor'],
+      order: { scheduledAt: 'DESC' },
+    });
+
+    // Get feedback for these sessions
+    const feedback = await this.feedbackRepository.find({
+      where: { session: { id: In(sessions.map(s => s.id)) } },
+    });
+
+    // Get unique mentors with their stats
+    const mentorStats = new Map();
+    sessions.forEach(session => {
+      const mentorId = session.mentor.id;
+      if (!mentorStats.has(mentorId)) {
+        mentorStats.set(mentorId, {
+          mentor: session.mentor,
+          sessions: 0,
+          ratings: [],
+        });
+      }
+      const stats = mentorStats.get(mentorId);
+      stats.sessions++;
+      
+      // Find feedback for this session
+      const sessionFeedback = feedback.find(f => f?.session?.id === session.id);
+      if (sessionFeedback?.rating) {
+        stats.ratings.push(sessionFeedback.rating);
+      }
+    });
+
+    // Calculate average ratings for each mentor
+    const mentors = Array.from(mentorStats.values()).map(stats => ({
+      ...stats.mentor,
+      sessions: stats.sessions,
+      averageRating: stats.ratings.length > 0
+        ? Number((stats.ratings.reduce((a, b) => a + b, 0) / stats.ratings.length).toFixed(1))
+        : 0,
+    }));
+
+    return {
+      totalSessions: sessions.length,
+      mentors,
+    };
   }
 } 

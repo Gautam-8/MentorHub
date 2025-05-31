@@ -34,8 +34,7 @@ export function Navbar() {
           <Link href="/dashboard/calendar" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Calendar</Link>
           {user.role === 'MENTOR' ? (
             <>
-              <Link href="/dashboard/availability" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Availability</Link>
-              <Link href="/dashboard/mentor-requests" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Requests</Link>
+              <Link href="/dashboard/mentor-analytics" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Analytics</Link>
             </>
           ) : (
             <>

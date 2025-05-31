@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Availability } from './entities/availability.entity';
-import { CreateAvailabilityDto } from './dto/availability.dto';
+import { Availability, DayOfWeek } from './entities/availability.entity';
+import { CreateAvailabilityDto } from './dto/create-availability.dto';
+import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { User } from '../users/entities/user.entity';
 import { UserRole } from '../users/entities/user.entity';
 
@@ -13,27 +14,31 @@ export class AvailabilityService {
     private availabilityRepository: Repository<Availability>,
   ) {}
 
-  async create(createAvailabilityDto: CreateAvailabilityDto, mentor: User) {
-    if (mentor.role !== UserRole.MENTOR) {
-      throw new ForbiddenException('Only mentors can create availability slots');
-    }
-
+  async create(createAvailabilityDto: CreateAvailabilityDto, user: User) {
     const availability = this.availabilityRepository.create({
-      ...createAvailabilityDto,
-      mentor,
+      date: new Date(createAvailabilityDto.date),
+      dayOfWeek: createAvailabilityDto.dayOfWeek as DayOfWeek,
+      startTime: createAvailabilityDto.startTime,
+      endTime: createAvailabilityDto.endTime,
+      mentor: user,
     });
 
     return this.availabilityRepository.save(availability);
   }
 
-  async findAll() {
-    return this.availabilityRepository.find({
-      relations: ['mentor'],
-      order: {
-        dayOfWeek: 'ASC',
-        startTime: 'ASC',
-      },
-    });
+  async findAll(startDate?: string, endDate?: string) {
+    const query = this.availabilityRepository
+      .createQueryBuilder('availability')
+      .leftJoinAndSelect('availability.mentor', 'mentor');
+
+    if (startDate && endDate) {
+      query.where('availability.date BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      });
+    }
+
+    return query.getMany();
   }
 
   async findByMentor(mentorId: string) {
@@ -60,25 +65,32 @@ export class AvailabilityService {
     return availability;
   }
 
-  async update(id: string, updateAvailabilityDto: CreateAvailabilityDto, mentor: User) {
+  async update(id: string, updateAvailabilityDto: UpdateAvailabilityDto, user: User) {
     const availability = await this.findOne(id);
 
-    if (availability.mentor.id !== mentor.id) {
+    if (availability.mentor.id !== user.id) {
       throw new ForbiddenException('You can only update your own availability slots');
     }
 
-    Object.assign(availability, updateAvailabilityDto);
+    const updatedData: Partial<Availability> = {};
+    if (updateAvailabilityDto.date) {
+      updatedData.date = new Date(updateAvailabilityDto.date);
+    }
+    if (updateAvailabilityDto.dayOfWeek) {
+      updatedData.dayOfWeek = updateAvailabilityDto.dayOfWeek;
+    }
+    if (updateAvailabilityDto.startTime) {
+      updatedData.startTime = updateAvailabilityDto.startTime;
+    }
+    if (updateAvailabilityDto.endTime) {
+      updatedData.endTime = updateAvailabilityDto.endTime;
+    }
+
+    Object.assign(availability, updatedData);
     return this.availabilityRepository.save(availability);
   }
 
-  async remove(id: string, mentor: User) {
-    const availability = await this.findOne(id);
-
-    if (availability.mentor.id !== mentor.id) {
-      throw new ForbiddenException('You can only delete your own availability slots');
-    }
-
-    await this.availabilityRepository.remove(availability);
-    return { message: 'Availability slot deleted successfully' };
+  async remove(id: string) {
+    return this.availabilityRepository.delete(id);
   }
 } 

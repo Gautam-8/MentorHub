@@ -4,7 +4,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../users/entities/user.entity';
-import { CreateAvailabilityDto, UpdateAvailabilityDto } from './dto/availability.dto';
+import { CreateAvailabilityDto } from './dto/create-availability.dto';
+import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 
 @Controller('availability')
 @UseGuards(JwtAuthGuard)
@@ -47,7 +48,7 @@ export class AvailabilityController {
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.MENTOR)
-  remove(@Param('id') id: string, @Request() req) {
-    return this.availabilityService.remove(id, req.user);
+  remove(@Param('id') id: string) {
+    return this.availabilityService.remove(id);
   }
 } 

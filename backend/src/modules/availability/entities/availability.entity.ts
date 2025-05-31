@@ -19,6 +19,9 @@ export class Availability {
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   mentor: User;
 
+  @Column({ type: 'date' })
+  date: Date;
+
   @Column({
     type: 'enum',
     enum: DayOfWeek,

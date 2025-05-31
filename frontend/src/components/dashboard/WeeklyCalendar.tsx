@@ -44,15 +44,6 @@ export const WeeklyCalendar: React.FC<WeeklyCalendarProps> = ({ sessions, userRo
     (session) => session.status === 'SCHEDULED'
   );
 
-  // Debug logs
-  console.log('All sessions:', sessions);
-  console.log('Filtered sessions:', filteredSessions);
-  console.log('Current timezone:', timezone);
-  console.log('Now:', new Date().toISOString());
-  sessions.forEach(session => {
-    console.log('Session scheduledAt:', session.scheduledAt, 'Parsed:', parseISO(session.scheduledAt).toISOString());
-  });
-
   // Group sessions by day (in selected timezone)
   const sessionsByDay = days.map(day =>
     filteredSessions.filter(session => {

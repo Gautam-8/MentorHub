@@ -39,6 +39,25 @@ export class SessionsController {
     return this.sessionsService.updateRequest(id, updateSessionRequestDto, req.user);
   }
 
+  @Get('request/:requestId')
+  findSessionByRequest(@Param('requestId') requestId: string, @Request() req) {
+    return this.sessionsService.findSessionByRequest(requestId, req.user);
+  }
+
+  @Get('analytics/mentor')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.MENTOR)
+  getMentorAnalytics(@Request() req) {
+    return this.sessionsService.getMentorAnalytics(req.user);
+  }
+
+  @Get('analytics/mentee')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.MENTEE)
+  getMenteeAnalytics(@Request() req) {
+    return this.sessionsService.getMenteeAnalytics(req.user);
+  }
+
   @Get()
   findAllSessions(@Request() req) {
     return this.sessionsService.findAllSessions(req.user);
