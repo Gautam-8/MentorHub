@@ -94,7 +94,14 @@ export class SessionsService {
   }
 
   async updateRequest(id: string, updateSessionRequestDto: UpdateSessionRequestDto, user: User) {
-    const request = await this.findOneRequest(id, user);
+    const request = await this.sessionRequestRepository.findOne({
+      where: { id },
+      relations: ['mentee', 'mentor', 'availability', 'availability.mentor'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Session request not found');
+    }
 
     if (user.role !== UserRole.MENTOR) {
       throw new ForbiddenException('Only mentors can update session requests');
@@ -115,11 +122,12 @@ export class SessionsService {
       const startTime = new Date(`${request.availability.date}T${request.availability.startTime}`);
       
       const session = new Session();
-      session.mentor = { id: request.availability.mentor.id } as User;
+      session.mentor = { id: request.mentor.id } as User;
       session.mentee = { id: request.mentee.id } as User;
       session.scheduledAt = startTime;
       session.status = SessionStatus.SCHEDULED;
       session.meetLink = this.generateMeetLink();
+      session.sessionRequest = { id: request.id } as SessionRequest;
 
       const savedSession = await this.sessionRepository.save(session);
       request.status = SessionRequestStatus.APPROVED;
