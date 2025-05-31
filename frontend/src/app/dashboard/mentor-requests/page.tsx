@@ -13,8 +13,7 @@ interface SessionRequest {
   note?: string;
   mentee: {
     id: string;
-    firstName: string;
-    lastName: string;
+    name: string;
   };
   availability: {
     dayOfWeek: string;
@@ -86,7 +85,7 @@ export default function MentorRequestsPage() {
             <Card key={request.id}>
               <CardHeader>
                 <CardTitle>
-                  Request from {request.mentee.firstName} {request.mentee.lastName}
+                  Request from {request.mentee.name}
                 </CardTitle>
               </CardHeader>
               <CardContent>

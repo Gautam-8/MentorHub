@@ -1,38 +1,36 @@
+import type { Metadata } from 'next';
 import './globals.css';
 import { Inter } from 'next/font/google';
+import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/auth-context';
-import Link from 'next/link';
+import { Navbar } from '@/components/Navbar';
+import { ReactNode } from 'react';
+import { ThemeProvider } from '@/contexts/theme-context';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
-  title: 'MentorHub',
-  description: 'Full Stack Peer Mentoring Platform',
+export const metadata: Metadata = {
+  title: 'MentorHub - Peer Mentoring Platform',
+  description: 'Connect with mentors and mentees for meaningful learning experiences',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   return (
-    <html lang="en">
-      <body className={inter.className + ' bg-gray-50 min-h-screen'}>
-        <AuthProvider>
-          <nav className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link href="/" className="text-xl font-bold text-blue-600 tracking-tight">
-                {/* Logo can be replaced with an image if available */}
-                MentorHub
-              </Link>
-            </div>
-            <div className="flex gap-4">
-              <Link href="/dashboard/calendar" className="hover:text-blue-600">Calendar</Link>
-              <Link href="/dashboard/sessions" className="hover:text-blue-600">Sessions</Link>
-              <Link href="/dashboard/mentor-analytics" className="hover:text-blue-600">Mentor Analytics</Link>
-              <Link href="/dashboard/mentee-analytics" className="hover:text-blue-600">Mentee Analytics</Link>
-            </div>
-          </nav>
-          <main className="container mx-auto px-4 py-8">
-            {children}
-          </main>
-        </AuthProvider>
+    <html lang="en" className={inter.className + ' bg-white dark:bg-black text-black dark:text-white transition-colors duration-300'}>
+      <body>
+        <ThemeProvider>
+          <AuthProvider>
+            <Navbar />
+            <main className="container mx-auto px-4 py-8">
+              {children}
+            </main>
+            <Toaster position="top-center" />
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

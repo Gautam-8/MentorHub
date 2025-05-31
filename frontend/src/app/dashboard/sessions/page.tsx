@@ -12,8 +12,7 @@ interface Availability {
   id: string;
   mentor: {
     id: string;
-    firstName: string;
-    lastName: string;
+    name: string;
   };
   dayOfWeek: string;
   startTime: string;
@@ -26,8 +25,7 @@ interface SessionRequest {
   note?: string;
   mentor: {
     id: string;
-    firstName: string;
-    lastName: string;
+    name: string;
   };
   availability: {
     id: string;
@@ -151,7 +149,7 @@ export default function SessionsPage() {
                 <Card key={availability.id}>
                   <CardHeader>
                     <CardTitle>
-                      {availability.mentor?.firstName} {availability.mentor?.lastName}
+                      {availability.mentor?.name}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -214,7 +212,7 @@ export default function SessionsPage() {
                 <Card key={request.id}>
                   <CardHeader>
                     <CardTitle>
-                      {request.mentor?.firstName} {request.mentor?.lastName}
+                      {request.mentor?.name} 
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

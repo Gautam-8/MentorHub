@@ -1,203 +1,271 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { Clock, Calendar, Plus, Trash2 } from 'lucide-react';
 
-interface Availability {
+interface TimeSlot {
   id: string;
   dayOfWeek: string;
   startTime: string;
   endTime: string;
 }
 
-const DAYS_OF_WEEK = [
-  'MONDAY',
-  'TUESDAY',
-  'WEDNESDAY',
-  'THURSDAY',
-  'FRIDAY',
-  'SATURDAY',
-  'SUNDAY',
-];
+const DAYS_OF_WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+const TIME_SLOTS = Array.from({ length: 24 * 2 }, (_, i) => {
+  const hour = Math.floor(i / 2);
+  const minute = i % 2 === 0 ? '00' : '30';
+  return `${hour.toString().padStart(2, '0')}:${minute}`;
+});
+
+// Helper to format day for display
+const formatDay = (day: string) => {
+  return day.charAt(0) + day.slice(1).toLowerCase();
+};
+
+// Helper to convert HH:mm to minutes
+const timeToMinutes = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+};
 
 export default function AvailabilityPage() {
-  const { user, token } = useAuth();
-  const [availabilities, setAvailabilities] = useState<Availability[]>([]);
-  const [dayOfWeek, setDayOfWeek] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const { user } = useAuth();
+  const [slots, setSlots] = useState<TimeSlot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<string>('MONDAY');
+  const [selectedStartTime, setSelectedStartTime] = useState<string>('09:00');
+  const [selectedEndTime, setSelectedEndTime] = useState<string>('10:00');
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    if (user?.role === 'MENTOR') {
-      fetchAvailabilities();
+    if (user?.id) {
+      fetchAvailability();
     }
   }, [user]);
 
-  const fetchAvailabilities = async () => {
+  const fetchAvailability = async () => {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/availability/mentor/${user?.id}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       });
+      if (!response.ok) throw new Error('Failed to fetch availability');
       const data = await response.json();
-      setAvailabilities(data);
+      setSlots(data);
     } catch (error) {
-      console.error('Error fetching availabilities:', error);
-      toast.error('Failed to load availability slots');
+      toast.error('Failed to load availability');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const addTimeSlot = async () => {
+    if (selectedStartTime >= selectedEndTime) {
+      toast.error('End time must be after start time');
+      return;
+    }
+    // Overlap validation (using minutes for robust comparison)
+    const daySlots = slots.filter(slot => slot.dayOfWeek === selectedDay);
+    const newStart = timeToMinutes(selectedStartTime);
+    const newEnd = timeToMinutes(selectedEndTime);
+    const isOverlap = daySlots.some(slot => {
+      const slotStart = timeToMinutes(slot.startTime);
+      const slotEnd = timeToMinutes(slot.endTime);
+      // Overlap if newStart < slotEnd && newEnd > slotStart
+      return newStart < slotEnd && newEnd > slotStart;
+    });
+    if (isOverlap) {
+      toast.error('This time slot overlaps with an existing slot. Please choose a different time.');
+      return;
+    }
+    setAdding(true);
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/availability`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify({
-          dayOfWeek,
-          startTime,
-          endTime,
+          dayOfWeek: selectedDay,
+          startTime: selectedStartTime,
+          endTime: selectedEndTime,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to create availability slot');
-      }
-
-      toast.success('Availability slot created successfully');
-      fetchAvailabilities();
-      setDayOfWeek('');
-      setStartTime('');
-      setEndTime('');
+      if (!response.ok) throw new Error('Failed to add slot');
+      toast.success('Time slot added');
+      fetchAvailability();
     } catch (error) {
-      console.error('Error creating availability:', error);
-      toast.error('Failed to create availability slot');
+      toast.error('Failed to add slot');
+    } finally {
+      setAdding(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  // Optional: implement delete if supported by backend
+  const removeTimeSlot = async (id: string) => {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/availability/${id}`, {
         method: 'DELETE',
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete availability slot');
-      }
-
-      toast.success('Availability slot deleted successfully');
-      fetchAvailabilities();
+      if (!response.ok) throw new Error('Failed to delete slot');
+      toast.success('Time slot removed');
+      fetchAvailability();
     } catch (error) {
-      console.error('Error deleting availability:', error);
-      toast.error('Failed to delete availability slot');
+      toast.error('Failed to remove slot');
     }
   };
 
-  if (user?.role !== 'MENTOR') {
+  if (loading) {
     return (
-      <div className="container mx-auto p-4">
-        <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
-        <p>Only mentors can manage their availability.</p>
+      <div className="container mx-auto py-10">
+        <div className="text-neutral-400 dark:text-neutral-500">Loading availability...</div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Manage Availability</h1>
+    <div className="container mx-auto py-10">
+      {/* Blurred/animated background shape */}
+      <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-to-br from-neutral-200/60 via-neutral-100/40 to-white/0 dark:from-neutral-900/60 dark:via-neutral-800/40 dark:to-black/0 rounded-full blur-3xl opacity-60 pointer-events-none select-none z-0 animate-pulse-slow" />
       
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Add New Availability Slot</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Day of Week</label>
-              <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a day" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DAYS_OF_WEEK.map((day) => (
-                    <SelectItem key={day} value={day}>
-                      {day.charAt(0) + day.slice(1).toLowerCase()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Header */}
+      <div className="relative z-10 mb-10">
+        <h1 className="text-3xl md:text-4xl font-extrabold text-black dark:text-white mb-2">Manage Availability</h1>
+        <p className="text-neutral-500 dark:text-neutral-400">Set your available time slots for mentoring sessions</p>
+      </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-1">Start Time</label>
-              <Input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">End Time</label>
-              <Input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                required
-              />
-            </div>
-
-            <Button type="submit">Add Availability</Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Availability Slots</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {availabilities.map((availability) => (
-              <div
-                key={availability.id}
-                className="flex items-center justify-between p-4 border rounded-lg"
+      {/* Main Content */}
+      <div className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Add Time Slot Card */}
+        <Card className="bg-white/70 dark:bg-black/70 backdrop-blur rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Plus className="w-5 h-5" />
+              Add Time Slot
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Day of Week</label>
+              <select
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(e.target.value)}
+                className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-black px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
               >
-                <div>
-                  <p className="font-medium">
-                    {availability.dayOfWeek.charAt(0) + availability.dayOfWeek.slice(1).toLowerCase()}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {availability.startTime} - {availability.endTime}
-                  </p>
-                </div>
-                <Button
-                  variant="destructive"
-                  onClick={() => handleDelete(availability.id)}
+                {DAYS_OF_WEEK.map((day) => (
+                  <option key={day} value={day}>
+                    {formatDay(day)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Start Time</label>
+                <select
+                  value={selectedStartTime}
+                  onChange={(e) => setSelectedStartTime(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-black px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
                 >
-                  Delete
-                </Button>
+                  {TIME_SLOTS.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ))}
-            {availabilities.length === 0 && (
-              <p className="text-gray-500">No availability slots added yet.</p>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">End Time</label>
+                <select
+                  value={selectedEndTime}
+                  onChange={(e) => setSelectedEndTime(e.target.value)}
+                  className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-black px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
+                >
+                  {TIME_SLOTS.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <Button
+              onClick={addTimeSlot}
+              className="w-full bg-black dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-200"
+              disabled={adding}
+            >
+              {adding ? 'Adding...' : 'Add Slot'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Current Schedule Card */}
+        <Card className="lg:col-span-2 bg-white/70 dark:bg-black/70 backdrop-blur rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Calendar className="w-5 h-5" />
+              Current Schedule
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {slots.length === 0 ? (
+              <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
+                No time slots added yet. Add your first slot to start accepting sessions!
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {DAYS_OF_WEEK.map((day) => {
+                  const daySlots = slots.filter((slot) => slot.dayOfWeek === day);
+                  return (
+                    <div key={day} className="space-y-2">
+                      <h3 className="font-semibold text-neutral-700 dark:text-neutral-300">{formatDay(day)}</h3>
+                      {daySlots.length === 0 ? (
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">No slots</p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {daySlots.map((slot) => (
+                            <div
+                              key={slot.id}
+                              className="flex items-center justify-between bg-neutral-100 dark:bg-neutral-900 rounded-lg px-4 py-2"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-neutral-500" />
+                                <span className="text-sm">
+                                  {slot.startTime} - {slot.endTime}
+                                </span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeTimeSlot(slot.id)}
+                                className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 } 
