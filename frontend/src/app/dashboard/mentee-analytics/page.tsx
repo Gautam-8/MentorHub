@@ -181,7 +181,9 @@ export default function MenteeAnalyticsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                      <span className="font-medium">{mentor.averageRating.toFixed(1)}</span>
+                      <span className="font-medium">
+                        {mentor.averageRating > 0 ? mentor.averageRating.toFixed(1) : '—'}
+                      </span>
                     </div>
                   </motion.div>
                 ))}

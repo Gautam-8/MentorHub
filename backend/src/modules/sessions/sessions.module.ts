@@ -7,11 +7,18 @@ import { Session } from './entities/session.entity';
 import { Availability } from '../availability/entities/availability.entity';
 import { FeedbackModule } from '../feedback/feedback.module';
 import { Feedback } from '../feedback/entities/feedback.entity';
+import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SessionRequest, Session, Availability, Feedback]),
-    FeedbackModule
+    TypeOrmModule.forFeature([
+      SessionRequest,
+      Session,
+      Availability,
+      Feedback,
+      User,
+    ]),
+    FeedbackModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService],

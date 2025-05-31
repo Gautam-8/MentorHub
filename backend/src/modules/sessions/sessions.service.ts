@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { SessionRequest, SessionRequestStatus } from './entities/session-request.entity';
 import { Session, SessionStatus } from './entities/session.entity';
 import { CreateSessionRequestDto, UpdateSessionRequestDto } from './dto/session-request.dto';
@@ -8,7 +8,6 @@ import { User } from '../users/entities/user.entity';
 import { UserRole } from '../users/entities/user.entity';
 import { Availability } from '../availability/entities/availability.entity';
 import { Feedback } from '../feedback/entities/feedback.entity';
-import { In } from 'typeorm';
 
 @Injectable()
 export class SessionsService {
@@ -21,6 +20,8 @@ export class SessionsService {
     private availabilityRepository: Repository<Availability>,
     @InjectRepository(Feedback)
     private feedbackRepository: Repository<Feedback>,
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
   ) {}
 
   async createRequest(createSessionRequestDto: CreateSessionRequestDto, mentee: User) {
@@ -111,15 +112,20 @@ export class SessionsService {
 
     if (request.status === SessionRequestStatus.APPROVED) {
       // Create a session when the request is approved
-      const session = this.sessionRepository.create({
-        mentor: request.mentor,
-        mentee: request.mentee,
-        sessionRequest: request,
-        scheduledAt: new Date(),
-        meetLink: this.generateMeetLink(),
-      });
+      const startTime = new Date(`${request.availability.date}T${request.availability.startTime}`);
+      
+      const session = new Session();
+      session.mentor = { id: request.availability.mentor.id } as User;
+      session.mentee = { id: request.mentee.id } as User;
+      session.scheduledAt = startTime;
+      session.status = SessionStatus.SCHEDULED;
+      session.meetLink = this.generateMeetLink();
 
-      await this.sessionRepository.save(session);
+      const savedSession = await this.sessionRepository.save(session);
+      request.status = SessionRequestStatus.APPROVED;
+      await this.sessionRequestRepository.save(request);
+
+      return savedSession;
     }
 
     return this.sessionRequestRepository.save(request);
@@ -227,44 +233,78 @@ export class SessionsService {
       order: { scheduledAt: 'DESC' },
     });
 
-    // Get feedback for these sessions
-    const feedback = await this.feedbackRepository.find({
-      where: { session: { id: In(sessions.map(s => s.id)) } },
-    });
-
     // Get unique mentors with their stats
     const mentorStats = new Map();
     sessions.forEach(session => {
       const mentorId = session.mentor.id;
       if (!mentorStats.has(mentorId)) {
         mentorStats.set(mentorId, {
-          mentor: session.mentor,
           sessions: 0,
-          ratings: [],
         });
       }
       const stats = mentorStats.get(mentorId);
       stats.sessions++;
-      
-      // Find feedback for this session
-      const sessionFeedback = feedback.find(f => f?.session?.id === session.id);
-      if (sessionFeedback?.rating) {
-        stats.ratings.push(sessionFeedback.rating);
-      }
     });
 
-    // Calculate average ratings for each mentor
-    const mentors = Array.from(mentorStats.values()).map(stats => ({
-      ...stats.mentor,
-      sessions: stats.sessions,
-      averageRating: stats.ratings.length > 0
-        ? Number((stats.ratings.reduce((a, b) => a + b, 0) / stats.ratings.length).toFixed(1))
-        : 0,
-    }));
+    // Get all feedback for these mentors
+    const mentorIds = Array.from(mentorStats.keys());
+    const allMentorFeedback = await this.feedbackRepository.find({
+      where: { toUser: { id: In(mentorIds) } },
+      relations: ['session', 'fromUser', 'toUser'],
+    });
+
+    // Get mentor details
+    const mentors = await this.userRepository.find({
+      where: { id: In(mentorIds) },
+      select: ['id', 'name'],
+    });
+
+    console.log(allMentorFeedback);
+    // Map mentors with their stats and ratings
+    const mentorsWithStats = mentors.map(mentor => {
+      const mentorFeedback = allMentorFeedback.filter(f => f.toUser.id === mentor.id);
+      const ratings = mentorFeedback.map(f => f.rating);
+      
+      return {
+        id: mentor.id,
+        name: mentor.name,
+        sessions: mentorStats.get(mentor.id).sessions,
+        averageRating: ratings.length > 0
+          ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1))
+          : null,
+      };
+    });
 
     return {
       totalSessions: sessions.length,
-      mentors,
+      mentors: mentorsWithStats,
     };
+  }
+
+  async approveSessionRequest(requestId: string) {
+    const request = await this.sessionRequestRepository.findOne({
+      where: { id: requestId },
+      relations: ['mentee', 'availability'],
+    });
+
+    if (!request) {
+      throw new Error('Session request not found');
+    }
+
+    const startTime = new Date(`${request.availability.date}T${request.availability.startTime}`);
+    
+    // Create session
+    const session = new Session();
+    session.mentor = { id: request.availability.mentor.id } as User;
+    session.mentee = { id: request.mentee.id } as User;
+    session.scheduledAt = startTime;
+    session.status = SessionStatus.SCHEDULED;
+    session.meetLink = this.generateMeetLink();
+
+    const savedSession = await this.sessionRepository.save(session);
+    request.status = SessionRequestStatus.APPROVED;
+    await this.sessionRequestRepository.save(request);
+
+    return savedSession;
   }
 } 

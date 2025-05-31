@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay, parseISO } from 'date-fns';
 import { toast } from 'sonner';
@@ -21,13 +21,27 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from "@/components/ui/badge";
+import { PageLoader } from '@/components/dashboard/PageLoader';
+
+// Add these enums at the top of the file
+enum SessionStatus {
+  SCHEDULED = 'SCHEDULED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+enum SessionRequestStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  DECLINED = 'DECLINED',
+}
 
 interface Session {
   id: string;
   scheduledAt: string;
   startTime: string;
   endTime: string;
-  status: string;
+  status: SessionStatus;
   mentor: {
     id: string;
     name: string;
@@ -64,7 +78,7 @@ interface TimeSlot {
 
 interface SessionRequest {
   id: string;
-  status: 'PENDING' | 'APPROVED' | 'DECLINED';
+  status: SessionRequestStatus;
   note?: string;
   mentee: {
     id: string;
@@ -78,6 +92,21 @@ interface SessionRequest {
   };
 }
 
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1
+    }
+  }
+};
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0 }
+};
+
 export default function CalendarPage() {
   const { user } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -88,7 +117,6 @@ export default function CalendarPage() {
   const [feedbacks, setFeedbacks] = useState<Record<string, Feedback | null>>({});
   const [viewFeedback, setViewFeedback] = useState<Feedback>({ rating: 0, comment: '' });
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<'week' | 'month'>('week');
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<SessionRequest | null>(null);
@@ -275,6 +303,16 @@ export default function CalendarPage() {
   const handleAddAvailability = async () => {
     if (!newAvailability.date || !newAvailability.startTime || !newAvailability.endTime) {
       toast.error('Please fill in all fields');
+      return;
+    }
+
+    // Check if selected date is in the past
+    const selectedDate = new Date(newAvailability.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day
+
+    if (selectedDate < today) {
+      toast.error('Cannot add availability for past dates');
       return;
     }
 
@@ -468,10 +506,10 @@ export default function CalendarPage() {
 
   // Quick stats for welcome bar
   const nextSession = sessions
-    .filter((s) => new Date(s.scheduledAt) > new Date())
+    .filter((s) => new Date(s.scheduledAt) > new Date() && s.status === SessionStatus.SCHEDULED)
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
+
   const totalSessions = sessions.length;
-  const upcomingCount = sessions.filter((s) => new Date(s.scheduledAt) > new Date()).length;
 
   // Helper for avatar initials
   const getInitials = (name: string) => {
@@ -563,16 +601,6 @@ export default function CalendarPage() {
     } finally {
       setIsHandlingRequest(false);
     }
-  };
-
-  const getFilteredTimeSlots = () => {
-    if (selectedMentorId === 'all') return timeSlots;
-    return timeSlots.filter(slot => slot.mentor.id === selectedMentorId);
-  };
-
-  const getFilteredSessions = () => {
-    if (selectedMentorId === 'all') return sessions;
-    return sessions.filter(session => session.mentor.id === selectedMentorId);
   };
 
   const getSessionDetails = (session: Session) => {
@@ -670,64 +698,112 @@ export default function CalendarPage() {
   };
 
   if (loading) {
-    return <div>Loading...</div>;
+    return <PageLoader />;
   }
 
   return (
     <div className="relative container mx-auto py-10">
-      {/* Simple Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-black dark:text-white">
-          {user?.role === 'MENTOR' ? 'Your Availability' : 'Mentor Schedule'}
-        </h1>
-        <p className="text-neutral-500 dark:text-neutral-400 mt-1">
-          {user?.role === 'MENTOR' 
-            ? 'Manage your available time slots for mentoring sessions'
-            : 'Browse and book sessions with available mentors'}
-        </p>
+      {/* Welcome Section with Stats */}
+      <div className="mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <h1 className="text-4xl font-bold text-black dark:text-white tracking-tight">
+                {user?.role === 'MENTOR' ? 'Your Availability' : 'Mentor Schedule'}
+              </h1>
+              <p className="text-neutral-500 dark:text-neutral-400 text-lg">
+                {user?.role === 'MENTOR' 
+                  ? 'Manage your available time slots for mentoring sessions'
+                  : 'Browse and book sessions with available mentors'}
+              </p>
+            </div>
+
+            <div className="bg-white/50 dark:bg-black/50 p-4 rounded-lg border border-neutral-200/50 dark:border-neutral-800/50">
+              <p className="text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                {user?.role === 'MENTOR' 
+                  ? 'Set your availability using the "Add Availability" button or by selecting time slots from the calendar. Manage session requests and view scheduled sessions by selecting the respective time slots.'
+                  : 'Select available time slots to request sessions. Click on booked sessions to view details and join meetings.'}
+              </p>
+            </div>
+          </div>
+          
+          {/* Quick Stats */}
+          <div className="grid grid-cols-1 gap-4">
+            <motion.div variants={item}>
+              <Card className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <CardTitle>Total Booked Sessions</CardTitle>
+                  <CardDescription>
+                    {user?.role === 'MENTOR' 
+                      ? 'Your confirmed mentoring sessions'
+                      : 'Your confirmed mentoring sessions'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{totalSessions}</div>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {totalSessions === 0 
+                      ? 'No sessions booked yet'
+                      : user?.role === 'MENTOR'
+                        ? 'Total sessions with mentees'
+                        : `Across ${mentors.length} mentor${mentors.length > 1 ? 's' : ''}`}
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+        </div>
       </div>
 
       {/* Calendar Section */}
-      <div className="relative z-10 w-full bg-white/70 dark:bg-black/70 backdrop-blur rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 p-6 md:p-10 transition-all">
-        {/* Calendar Header - Fixed */}
-        <div className="sticky top-0 bg-white/70 dark:bg-black/70 backdrop-blur z-20 pb-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+      <div className="relative z-10 w-full bg-white/80 dark:bg-black/80 backdrop-blur rounded-3xl shadow-2xl border border-neutral-200/50 dark:border-neutral-800/50 p-6 md:p-10 transition-all duration-300">
+        {/* Calendar Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
             <Button
               variant="outline"
               size="icon"
               onClick={() => setCurrentDate(subWeeks(currentDate, 1))}
+              className="hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-all duration-200"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <h2 className="text-2xl font-bold">
+            <h2 className="text-2xl font-bold tracking-tight">
               {format(startOfWeek(currentDate), 'MMM d')} - {format(endOfWeek(currentDate), 'MMM d, yyyy')}
             </h2>
             <Button
               variant="outline"
               size="icon"
               onClick={() => setCurrentDate(addWeeks(currentDate, 1))}
+              className="hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-all duration-200"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex items-center space-x-4">
+          
+          <div className="flex items-center gap-4">
             {user?.role === 'MENTEE' && (
-              <div className="flex items-center space-x-2">
-                <Select
-                  value={selectedMentorId}
-                  onValueChange={setSelectedMentorId}
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Select Mentor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mentors.map((mentor) => (
-                      <SelectItem key={mentor.id} value={mentor.id}>
-                        {mentor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="mentor-select" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                    Select Mentor:
+                  </label>
+                  <Select
+                    value={selectedMentorId}
+                    onValueChange={setSelectedMentorId}
+                  >
+                    <SelectTrigger id="mentor-select" className="w-[200px]">
+                      <SelectValue placeholder="Select Mentor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mentors.map((mentor) => (
+                        <SelectItem key={mentor.id} value={mentor.id}>
+                          {mentor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
                   variant="outline"
                   size="icon"
@@ -737,47 +813,50 @@ export default function CalendarPage() {
                     setSelectedMentorId(mentors[nextIndex].id);
                   }}
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <Users className="h-4 w-4" />
                 </Button>
               </div>
             )}
-            <div className="flex items-center space-x-2">
-              <Button
-                variant={view === 'week' ? 'default' : 'outline'}
-                onClick={() => setView('week')}
-              >
-                Week
-              </Button>
-              <Button
-                variant={view === 'month' ? 'default' : 'outline'}
-                onClick={() => setView('month')}
-              >
-                Month
-              </Button>
-              {user?.role === 'MENTOR' && (
-                <Button
-                  onClick={() => setIsAddingAvailability(true)}
-                  className="ml-4"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Availability
-                </Button>
-              )}
+            
+            {/* Status Indicators */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-100 dark:bg-neutral-900 text-sm">
+                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                Available
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-100 dark:bg-neutral-900 text-sm">
+                <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                Pending
+              </div>
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-neutral-100 dark:bg-neutral-900 text-sm">
+                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                Approved
+              </div>
             </div>
+            
+            {user?.role === 'MENTOR' && (
+              <Button
+                onClick={() => setIsAddingAvailability(true)}
+                className="bg-black dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-all duration-200 shadow-lg hover:shadow-xl"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Availability
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* Calendar Grid - Scrollable */}
-        <div className="mt-4 h-[calc(100vh-200px)] overflow-y-auto">
-          <div className="grid grid-cols-8 gap-px bg-neutral-200 dark:bg-neutral-800 rounded-lg overflow-hidden">
-            {/* Time Column - Fixed */}
-            <div className="bg-white dark:bg-black p-2 sticky left-0 z-10">
+        {/* Calendar Grid */}
+        <div className="overflow-x-auto">
+          <div className="grid grid-cols-8 gap-px bg-neutral-200 dark:bg-neutral-800 rounded-xl overflow-hidden min-w-[800px] shadow-lg">
+            {/* Time Column */}
+            <div className="bg-white/90 dark:bg-black/90 p-2 sticky left-0 z-10 backdrop-blur-sm">
               <div className="h-12" /> {/* Header spacer */}
               {Array.from({ length: 48 }, (_, i) => {
                 const hour = Math.floor(i / 2);
                 const minute = i % 2 === 0 ? '00' : '30';
                 return (
-                  <div key={`${hour}:${minute}`} className="h-12 text-sm text-neutral-500 dark:text-neutral-400">
+                  <div key={`${hour}:${minute}`} className="h-12 text-sm text-neutral-500 dark:text-neutral-400 font-medium">
                     {`${hour.toString().padStart(2, '0')}:${minute}`}
                   </div>
                 );
@@ -789,10 +868,10 @@ export default function CalendarPage() {
               start: startOfWeek(currentDate),
               end: endOfWeek(currentDate),
             }).map((day) => (
-              <div key={day.toString()} className="bg-white dark:bg-black">
-                {/* Day Header - Fixed */}
-                <div className="h-12 p-2 border-b border-neutral-200 dark:border-neutral-800 sticky top-0 bg-white dark:bg-black z-10">
-                  <div className="text-sm font-medium">
+              <div key={day.toString()} className="bg-white/90 dark:bg-black/90 backdrop-blur-sm">
+                {/* Day Header */}
+                <div className="h-12 p-2 border-b border-neutral-200/50 dark:border-neutral-800/50 sticky top-0 bg-white/90 dark:bg-black/90 z-10 backdrop-blur-sm">
+                  <div className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
                     {format(day, 'EEE')}
                   </div>
                   <div className="text-2xl font-bold">
@@ -800,7 +879,7 @@ export default function CalendarPage() {
                   </div>
                 </div>
 
-                {/* Time Slots - Scrollable */}
+                {/* Time Slots */}
                 {Array.from({ length: 48 }, (_, i) => {
                   const hour = Math.floor(i / 2);
                   const minute = i % 2 === 0 ? '00' : '30';
@@ -812,10 +891,11 @@ export default function CalendarPage() {
                     <div
                       key={time}
                       className={cn(
-                        "h-12 p-1 border-b border-neutral-200 dark:border-neutral-800",
-                        slots.length > 0 && "bg-green-50 dark:bg-green-900/20",
-                        sessions.length > 0 && "bg-blue-50 dark:bg-blue-900/20",
-                        (user?.role === 'MENTOR' || (user?.role === 'MENTEE' && slots.length > 0)) && "cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                        "h-12 p-1 border-b border-neutral-200/50 dark:border-neutral-800/50 transition-all duration-200",
+                        slots.length > 0 && "bg-green-50/50 dark:bg-green-900/10",
+                        sessions.length > 0 && "bg-blue-50/50 dark:bg-blue-900/10",
+                        (user?.role === 'MENTOR' || (user?.role === 'MENTEE' && slots.length > 0)) && 
+                        "cursor-pointer hover:bg-neutral-50/50 dark:hover:bg-neutral-900/50"
                       )}
                       onClick={(e) => {
                         // If clicking on a session, don't do anything
@@ -870,10 +950,10 @@ export default function CalendarPage() {
                           <div
                             key={slot.id}
                             className={cn(
-                              "text-white text-xs p-1 rounded mb-1",
-                              status.type === 'available' && "bg-green-500",
-                              status.type === 'pending' && "bg-yellow-500",
-                              status.type === 'approved' && "bg-blue-500"
+                              "text-white text-xs p-1 rounded mb-1 transition-all duration-200 shadow-sm",
+                              status.type === 'available' && "bg-green-500 hover:bg-green-600",
+                              status.type === 'pending' && "bg-yellow-500 hover:bg-yellow-600",
+                              status.type === 'approved' && "bg-blue-500 hover:bg-blue-600"
                             )}
                           >
                             {status.type === 'available' && (
@@ -888,13 +968,16 @@ export default function CalendarPage() {
                           </div>
                         );
                       })}
+                      
                       {sessions.map((session) => (
                         <div
                           key={session.id}
                           data-session="true"
                           className={cn(
-                            "text-white text-xs p-1 rounded cursor-pointer hover:opacity-90",
-                            session.status === 'PENDING' ? "bg-yellow-500" : "bg-blue-500"
+                            "text-white text-xs p-1 rounded cursor-pointer transition-all duration-200 shadow-sm",
+                            session.status === SessionStatus.SCHEDULED && "bg-blue-500 hover:bg-blue-600",
+                            session.status === SessionStatus.COMPLETED && "bg-green-500 hover:bg-green-600",
+                            session.status === SessionStatus.CANCELLED && "bg-red-500 hover:bg-red-600"
                           )}
                           onClick={(e) => {
                             e.preventDefault();
@@ -904,20 +987,23 @@ export default function CalendarPage() {
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center text-xs">
+                              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-medium">
                                 {getInitials(session.mentor.name)}
                               </div>
                               <span className="text-xs font-medium">{session.mentor.name}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center text-xs">
+                              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-medium">
                                 {getInitials(session.mentee.name)}
                               </div>
                               <span className="text-xs font-medium">{session.mentee.name}</span>
                             </div>
                           </div>
-                          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                          <div className="text-xs text-white/80 mt-1">
                             {session.startTime} - {session.endTime}
+                          </div>
+                          <div className="text-xs text-white/80 mt-1">
+                            Status: {session.status.toLowerCase()}
                           </div>
                         </div>
                       ))}
@@ -1074,9 +1160,15 @@ export default function CalendarPage() {
               <label className="text-sm font-medium">Date</label>
               <Input
                 type="date"
+                min={format(new Date(), 'yyyy-MM-dd')}
                 value={newAvailability.date}
                 onChange={(e) => setNewAvailability({ ...newAvailability, date: e.target.value })}
               />
+              {newAvailability.date && new Date(newAvailability.date) < new Date(new Date().setHours(0, 0, 0, 0)) && (
+                <p className="text-sm text-red-500 mt-1">
+                  Cannot add availability for past dates
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Start Time</label>
@@ -1099,7 +1191,15 @@ export default function CalendarPage() {
             <Button variant="outline" onClick={() => setIsAddingAvailability(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddAvailability}>
+            <Button 
+              onClick={handleAddAvailability}
+              disabled={
+                !newAvailability.date || 
+                !newAvailability.startTime || 
+                !newAvailability.endTime ||
+                new Date(newAvailability.date) < new Date(new Date().setHours(0, 0, 0, 0))
+              }
+            >
               Add Availability
             </Button>
           </DialogFooter>
