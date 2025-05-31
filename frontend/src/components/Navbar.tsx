@@ -31,17 +31,16 @@ export function Navbar() {
       
       {user ? (
         <div className="flex items-center gap-6">
+          <Link href="/dashboard/calendar" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Calendar</Link>
           {user.role === 'MENTOR' ? (
             <>
-              <Link href="/dashboard/calendar" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Calendar</Link>
               <Link href="/dashboard/availability" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Availability</Link>
               <Link href="/dashboard/mentor-requests" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Requests</Link>
-              <Link href="/dashboard/mentor-analytics" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Analytics</Link>
             </>
           ) : (
             <>
-              <Link href="/dashboard/find-sessions" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Find Sessions</Link>
-              <Link href="/dashboard/my-sessions" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">My Sessions</Link>
+              <Link href="/dashboard/sessions" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Find Sessions</Link>
+              <Link href="/dashboard/mentee-analytics" className="nav-link text-neutral-700 dark:text-neutral-200 hover:text-black dark:hover:text-white">Analytics</Link>
             </>
           )}
           {/* Avatar and dropdown */}

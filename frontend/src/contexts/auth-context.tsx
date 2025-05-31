@@ -12,8 +12,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string, role: 'MENTOR' | 'MENTEE') => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  signup: (name: string, email: string, password: string, role: 'MENTOR' | 'MENTEE') => Promise<User>;
   logout: () => void;
 }
 
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<User> => {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signin`, {
         method: 'POST',
@@ -54,13 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       localStorage.setItem('token', data.access_token);
       localStorage.setItem('user', JSON.stringify(data.user));
+      
+      return data.user;
     } catch (error) {
       console.error('Login error:', error);
       throw error;
     }
   };
 
-  const signup = async (name: string, email: string, password: string, role: 'MENTOR' | 'MENTEE') => {
+  const signup = async (name: string, email: string, password: string, role: 'MENTOR' | 'MENTEE'): Promise<User> => {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/signup`, {
         method: 'POST',
@@ -80,6 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       localStorage.setItem('token', data.access_token);
       localStorage.setItem('user', JSON.stringify(data.user));
+      
+      return data.user;
     } catch (error) {
       console.error('Signup error:', error);
       throw error;
